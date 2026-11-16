@@ -1,1 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장보고-N 재장전 시뮬레이터</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="css/style.css">
+<script src="vendor/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+<header class="top"><div class="in">
+  <div class="brand">장보고-N 재장전 시뮬레이터<span>DSTAC S3 TD 4부</span></div>
+  <nav class="menu"><button data-tab="structure" class="on">계산 구조</button><button data-tab="result">결과</button><button data-tab="sens">민감도 분석</button><button data-tab="model">모델과 가정</button><button data-tab="refs">참고문헌 반영</button></nav>
+</div></header>
 
+<div class="layout">
+<aside class="panel" id="panel">
+  <h2>파라미터</h2>
+  <p class="lead">조정 즉시 재계산 · 금액 입력은 1995년 달러</p>
+  <div class="plinks">프리셋 <button data-preset="us95">1995 기준함</button> · <button data-preset="jb8">장보고-N 8,000t</button> · <button data-preset="jb5">장보고-N 5,000t</button> · <button data-preset="suf">Suffren 유사</button> · <button id="reset">초기화</button></div>
+  <div class="cols">
+  <div class="tier t1">
+    <div class="th">판정을 바꾸는 값</div>
+    <div class="td">최적 재장전 횟수와 가설 판정이 이 값들에 따라 달라짐</div>
+    <div class="pr"><div class="sym">문헌 묶음<small>연료 기술 가정</small></div><select id="scn"><option value="s95">1995 보고서 · 같은 연료</option><option value="ipp">Ippolito 1990 · UO₂ 고충전</option><option value="han">Hanlon 2017 · U-Mo</option><option value="mane">Mané 2020 · 밀도 조정</option><option value="custom">직접 조정</option></select></div>
+    <div class="ph">문헌마다 U-235 장전비와 우라늄 밀도비를 한 묶음으로 적용</div>
+    <div class="pr"><div class="sym">r<small>U-235 장전비</small></div><input type="range" id="r" min="0.5" max="2" step="0.01"><div class="val" id="v_r"></div></div>
+    <div class="ph">LEU 노심이 HEU보다 U-235를 몇 배 넣는가 · 1995 0.65 · Hanlon 0.77 · Mané 약 1 · Ippolito 1.12-1.84</div>
+    <div class="pr"><div class="sym">밀도비<small>우라늄 밀도 LEU÷HEU</small></div><input type="range" id="Lr" min="0.8" max="5" step="0.05"><div class="val" id="v_Lr"></div></div>
+    <div class="ph">노심 1 L에 담는 우라늄 질량의 비 · 같은 연료면 1 · Ippolito 약 3.25 · U-Mo는 약 3.6</div>
+    <div class="pr"><div class="sym">연료 한계<small>LEU 연소도 상한</small></div><select id="fuel"><option value="cermet">UO₂-Zr 서멧 300 MWd/kg</option><option value="umo">U-10Mo 100 MWd/kg</option><option value="uo2p">UO₂ 펠릿 100 MWd/kg</option><option value="uo2i">UO₂ 카라멜 60 MWd/kg</option></select></div>
+    <div class="ph" id="coreInfo"></div>
+    <label class="pc"><input type="checkbox" id="floorOn"> 노심 하한 적용(HEU 노심보다 작아지지 않음)</label>
+    <div class="pr"><div class="sym">W₀<small>원자로 계통 중량</small></div><input type="range" id="W0" min="150" max="1200" step="10"><div class="val" id="v_W0"></div></div>
+    <div class="pr"><div class="sym">c<sub>t</sub><small>t당 건조비 증분</small></div><input type="range" id="cpt" min="0.1" max="1" step="0.01"><div class="val" id="v_cpt"></div></div>
+    <div class="ph">둘 다 1995 보고서 역산값 · 무게 증가와 건조비 증가를 결정</div>
+    <div class="pr"><div class="sym">C<sub>병행</sub><small>대정비 병행 재장전</small></div><input type="range" id="Cr" min="0" max="500" step="5"><div class="val" id="v_Cr"></div></div>
+    <div class="pr"><div class="sym">C<sub>단독</sub><small>단독 입거 재장전</small></div><input type="range" id="Cr2" min="0" max="900" step="5"><div class="val" id="v_Cr2"></div></div>
+    <div class="ph">1995 병행 $60M + 노심 $85M · 단독 $320M + 노심 $85M · 대정비와 겹치면 병행 단가</div>
+    <label class="pc"><input type="checkbox" id="avOn"> 가용성 손실 포함</label>
+    <div class="pr"><div class="sym">t<sub>off</sub><small>병행 추가 비가동</small></div><input type="range" id="mo" min="0" max="36" step="1"><div class="val" id="v_mo"></div></div>
+    <div class="pr"><div class="sym">t<sub>sa</sub><small>단독 입거 기간</small></div><input type="range" id="tsa" min="6" max="40" step="1"><div class="val" id="v_tsa"></div></div>
+    <div class="ph">Hanlon: 재장전 포함 정비 24개월 대 미포함 18개월(추가 6-10개월) · Los Angeles급 단독 재장전 정비 평균 24개월</div>
+    <div class="pr"><div class="sym">r<sub>d</sub><small>할인율</small></div><input type="range" id="disc" min="0" max="8" step="0.5"><div class="val" id="v_disc"></div></div>
+    <div class="ph">2026 총괄지침 제50조 사회적 할인율 4.5% · 국방 사업은 예타 면제라 준거값 · 재장전비를 현재가치로 환산</div>
+    <label class="pc"><input type="checkbox" id="infOn"> 재장전 인프라 고정비 포함</label>
+    <div class="pr"><div class="sym">C<sub>인프라</sub><small>시설 구축비 총액</small></div><input type="range" id="Inf" min="0" max="3000" step="25"><div class="val" id="v_Inf"></div></div>
+    <div class="pr"><div class="sym">척수<small>비용 분담 척수</small></div><input type="range" id="ships" min="1" max="10" step="1"><div class="val" id="v_ships"></div></div>
+    <div class="ph">한국 재장전 시설 없음 · 금액 근거 없음 · 이 금액을 넘으면 재장전 가설 기각</div>
+    <div class="pr"><div class="sym">C<sub>해치</sub><small>재장전형 설계 추가비</small></div><input type="range" id="hatch" min="0" max="10" step="0.5"><div class="val" id="v_hatch"></div></div>
+    <div class="ph">기준함 건조비 대비 % · 프랑스식 재장전 해치(Moore 2017) · 금액 근거 없는 0-10% 가정</div>
+  </div>
+  <div class="tier">
+    <div class="th">규모와 표시만 바꾸는 값</div>
+    <div class="td">우라늄 질량·선체 길이·금액 크기만 바뀌고 판정은 유지</div>
+    <div class="pr"><div class="sym">L<sub>ship</sub><small>함정 수명</small></div><input type="range" id="L" min="20" max="40" step="1"><div class="val" id="v_L"></div></div>
+    <div class="pr"><div class="sym">P<sub>th</sub><small>열출력</small></div><input type="range" id="P" min="20" max="300" step="5"><div class="val" id="v_P"></div></div>
+    <div class="pr"><div class="sym">CF<small>이용률</small></div><input type="range" id="CF" min="5" max="80" step="0.5"><div class="val" id="v_CF"></div></div>
+    <div class="ph">CF는 Hanlon 배치 0.5 × 출력 0.25 = 12.5% · HEU와 LEU에 똑같이 들어가 비교에서 약분</div>
+    <div class="pr"><div class="sym">D<small>선체 직경</small></div><input type="range" id="D" min="7" max="12.5" step="0.1"><div class="val" id="v_D"></div></div>
+    <div class="ph">선체 길이 증가 ΔL 표시에만 사용 · 1995 기준함 10.4 m</div>
+    <div class="pr"><div class="sym">조선 초과<small>물가 상승 %p/년</small></div><input type="range" id="sx" min="0" max="2" step="0.1"><div class="val" id="v_sx"></div></div>
+    <div class="ph" id="inflHint"></div>
+
+    <details class="adv">
+      <summary>세부 설정</summary>
+      <div class="td" style="font-size:12px;color:var(--sub);margin-top:4px">1995 보고서 값이나 모델 방식으로 고정한 값 · 기본값 유지 권장</div>
+      <div class="sg">연료</div>
+      <div class="pr"><div class="sym">e<small>LEU 농축도</small></div><input type="range" id="e" min="5" max="20" step="0.25"><div class="val" id="v_e"></div></div>
+      <div class="pr"><div class="sym">B<sub>HEU</sub><small>HEU 연소도</small></div><input type="range" id="BH" min="200" max="550" step="1"><div class="val" id="v_BH"></div></div>
+      <div class="ph">Hanlon 요구값 333 · 서멧 물리 한계 약 300보다 11% 높다고 원문이 밝힘</div>
+      <div class="sg">선체</div>
+      <div class="pr"><div class="sym">a<small>중량 스케일 지수</small></div><input type="range" id="a" min="0.67" max="1.4" step="0.01"><div class="val" id="v_a"></div></div>
+      <div class="pr"><div class="sym">Δ₀<small>기준함 배수량</small></div><input type="range" id="disp" min="3000" max="10000" step="100"><div class="val" id="v_disp"></div></div>
+      <div class="pr"><div class="sym">ρ<sub>sw</sub><small>해수 밀도</small></div><input type="range" id="rho" min="1020" max="1032" step="1"><div class="val" id="v_rho"></div></div>
+      <div class="sg">정비 일정</div>
+      <div class="pr"><div class="sym">K<small>계획 대정비 횟수</small></div><input type="range" id="K" min="0" max="3" step="1"><div class="val" id="v_K"></div></div>
+      <div class="pr"><div class="sym">대정비 간격<small>년</small></div><input type="range" id="Oint" min="6" max="15" step="0.5"><div class="val" id="v_Oint"></div></div>
+      <div class="ph">1995 기준함 10년·20년 · 재장전을 이 시점에 붙이면 병행 단가</div>
+      <div class="pr"><div class="sym">T<sub>max</sub><small>재장전 간격 상한</small></div><input type="range" id="Tmax" min="8" max="40" step="1"><div class="val" id="v_Tmax"></div></div>
+      <div class="sg">비용</div>
+      <div class="pr"><div class="sym">C<sub>건조</sub><small>기준함 건조비</small></div><input type="range" id="Cb" min="500" max="4000" step="10"><div class="val" id="v_Cb"></div></div>
+      <div class="pr"><div class="sym">C<sub>노심</sub><small>노심 1개 고정비</small></div><input type="range" id="Cc" min="0" max="300" step="5"><div class="val" id="v_Cc"></div></div>
+      <div class="pr"><div class="sym">V<sub>년</sub><small>척당 연간 가치</small></div><input type="range" id="avU" min="20" max="300" step="5"><div class="val" id="v_avU"></div></div>
+      <div class="pr"><div class="sym">환율<small>원/$</small></div><input type="range" id="fx" min="1100" max="1700" step="10"><div class="val" id="v_fx"></div></div>
+      <div class="pr"><div class="sym">N<sub>max</sub><small>비교 재장전 횟수</small></div><input type="range" id="Nmax" min="3" max="8" step="1"><div class="val" id="v_Nmax"></div></div>
+    </details>
+  </div>
+  </div>
+</aside>
+
+<main><div class="wrap">
+  <div class="hero">
+    <h1>장보고-N LEU 원자로 재장전 횟수 최적화</h1>
+    <p>20% 미만 저농축우라늄(LEU)을 쓰면 같은 수명을 내기 위해 노심이 커지고 배가 무거워진다. 재장전을 하면 노심은 작아지지만 재장전 비용과 정박 기간이 생긴다. 이 시뮬레이터는 '주기적 재장전이 무재장전보다 선체 크기와 비용 면에서 합리적이다' 가설 검증 모델로 두 비용의 합이 가장 작은 재장전 횟수를 찾는다.</p>
+    <p class="hv" id="heroVerdict"></p>
+  </div>
+
+  <section id="structure" class="on">
+    <h2>계산 구조</h2>
+    <p class="intro">재장전 횟수 N을 0회부터 차례로 넣어 아래 다섯 단계를 계산하고, 척당 비용이 가장 작은 N을 고른다. 각 단계 위는 들어가는 값, 아래는 나오는 값이다.</p>
+    <div class="legend"><span><span class="kk">파란 글자</span> 판정을 바꾸는 값</span><span><span class="gg">회색 글자</span> 규모만 바꾸거나 고정한 값</span></div>
+    <div class="flow">
+      <div class="fc">
+        <div class="fin"><span class="kk">N 재장전 횟수</span><span class="gg">L<sub>ship</sub> 함정 수명 · 대정비 10·20년</span></div>
+        <div class="fn"><div class="s">1단계</div><div class="t">재장전 일정</div><div class="q">재장전을 언제 하고 노심 하나가 최대 몇 년 버텨야 하나</div></div>
+        <div class="fout"><b>T</b> = 가장 긴 재장전 간격</div>
+      </div>
+      <div class="fc">
+        <div class="fin"><span class="kk">r U-235 장전비</span><span class="gg">P<sub>th</sub> · CF · e 농축도 · HEU 연소도</span></div>
+        <div class="fn"><div class="s">2단계</div><div class="t">연료량</div><div class="q">그 기간 동안 U-235가 HEU보다 몇 배 필요한가</div></div>
+        <div class="fout"><b>M<sub>U</sub></b> 우라늄 · <b>B</b> 연소도</div>
+      </div>
+      <div class="fc">
+        <div class="fin"><span class="kk">우라늄 밀도비 · 연료 한계</span><span class="gg">노심 하한(HEU 크기)</span></div>
+        <div class="fn"><div class="s">3단계</div><div class="t">노심 크기</div><div class="q">그 우라늄을 담으려면 노심이 HEU의 몇 배인가</div></div>
+        <div class="fout"><b>M</b> 노심 체적 배수</div>
+      </div>
+      <div class="fc">
+        <div class="fin"><span class="kk">W₀ 원자로 계통 중량</span><span class="gg">a 스케일 지수 · D 직경</span></div>
+        <div class="fn"><div class="s">4단계</div><div class="t">선체 영향</div><div class="q">커진 노심만큼 배가 얼마나 무거워지고 길어지나</div></div>
+        <div class="fout"><b>ΔW</b> 중량 · <b>ΔL</b> 길이</div>
+      </div>
+      <div class="fc">
+        <div class="fin"><span class="kk">c<sub>t</sub> · C<sub>병행</sub> · C<sub>단독</sub></span><span class="kk">t<sub>off</sub> · t<sub>sa</sub> · 할인율</span><span class="kk">인프라 · 해치 추가비</span></div>
+        <div class="fn"><div class="s">5단계</div><div class="t">총비용</div><div class="q">건조비 증가와 재장전 비용을 더하면 얼마인가</div></div>
+        <div class="fout"><b>C(N)</b> 척당 추가 비용</div>
+      </div>
+      <div class="fc">
+        <div class="fin"><span class="gg">N = 0, 1, 2 … 비교</span></div>
+        <div class="fn end"><div class="s">판정</div><div class="t">최저점 N*</div><div class="q">N* ≥ 1이면 4부 가설 지지 · T가 7-12년이면 H3 지지</div></div>
+        <div class="fout"><b>지지</b> 또는 <b>기각</b></div>
+      </div>
+    </div>
+    <ol class="story">
+      <li>LEU는 연료 속 U-235 비율이 HEU의 약 1/5이다. 같은 기간을 버티려면 우라늄을 더 많이 넣어야 하고, 연료를 얼마나 빽빽하게 채울 수 있느냐에 따라 노심이 HEU의 1-3배가 된다(2·3단계).</li>
+      <li>노심이 커지면 원자로 용기와 차폐가 무거워지고, 가라앉지 않게 부력을 맞추려면 선체가 길어진다. 무게가 늘어난 만큼 건조비가 오른다(4·5단계).</li>
+      <li>재장전을 하면 노심 하나가 버틸 기간이 짧아져 노심이 작아진다. 재장전을 원래 잡힌 대정비(10년·20년)에 붙이면 비용이 싸고, 따로 입거하면 비싸다. 두 비용의 합이 가장 작은 N이 답이다(1·5단계·판정).</li>
+    </ol>
+
+    <h3>파라미터가 어디에 들어가나</h3>
+    <p class="muted">왼쪽 패널도 같은 세 묶음으로 나눴다. 판정만 보려면 첫 묶음만 움직이면 된다.</p>
+    <div class="scroll"><table>
+      <tr><th>파라미터</th><th>들어가는 단계</th><th>하는 일</th><th>값의 성격</th></tr>
+      <tr class="grp"><td colspan="4">판정을 바꾸는 값</td></tr>
+      <tr><td>문헌 묶음(r · 우라늄 밀도비)</td><td>2 · 3</td><td>두 값이 함께 LEU 노심이 HEU의 몇 배인지 정함. 판정을 가르는 핵심 축</td><td>조정, 문헌 4건</td></tr>
+      <tr><td>연료 한계</td><td>2 연료량</td><td>LEU 평균 연소도가 연료가 견디는 값을 넘는지 확인</td><td>추정, 연료별</td></tr>
+      <tr><td>노심 하한</td><td>3 노심 크기</td><td>LEU 노심이 HEU보다 작아져 선체 이득이 생기는 계산을 막음</td><td>방식</td></tr>
+      <tr><td>W₀ · c<sub>t</sub></td><td>4 · 5</td><td>노심이 커질 때 무게와 건조비가 얼마나 느는지</td><td>1995 역산</td></tr>
+      <tr><td>C<sub>병행</sub> · C<sub>단독</sub> · t<sub>off</sub> · t<sub>sa</sub></td><td>1 · 5</td><td>대정비에 붙인 재장전과 따로 입거한 재장전의 비용과 정박 기간</td><td>1995 · Hanlon</td></tr>
+      <tr><td>할인율</td><td>5 총비용</td><td>나중에 쓰는 재장전비를 지금 돈으로 환산</td><td>조정, 예타 4.5%</td></tr>
+      <tr><td>C<sub>인프라</sub> · 척수 · C<sub>해치</sub></td><td>5 총비용</td><td>재장전 시설과 해치를 위한 추가비</td><td>조정, 근거 없음</td></tr>
+      <tr class="grp g2"><td colspan="4">규모와 표시만 바꾸는 값</td></tr>
+      <tr><td>L<sub>ship</sub> · P<sub>th</sub> · CF</td><td>1 · 2</td><td>우라늄 절대 질량. HEU와 LEU에 똑같이 들어가 비교에서 약분</td><td>추정</td></tr>
+      <tr><td>D 선체 직경</td><td>4 선체 영향</td><td>선체 길이 증가 ΔL 표시</td><td>조정</td></tr>
+      <tr><td>조선 초과 물가</td><td>5 총비용</td><td>1995년 달러를 2026년 달러로 환산</td><td>BEA 확정 · CBO 추정</td></tr>
+      <tr class="grp g2"><td colspan="4">세부 설정(기본값 고정)</td></tr>
+      <tr><td>e · HEU 연소도</td><td>2 연료량</td><td>20% LEU 조건과 HEU 노심 연소도(Hanlon 333)</td><td>확정 · 추정</td></tr>
+      <tr><td>a · Δ₀ · ρ<sub>sw</sub></td><td>4 선체 영향</td><td>무게 증가 곡선 모양, 배수량 % 분모, 해수 밀도</td><td>1995 역산·확정</td></tr>
+      <tr><td>K · 대정비 간격 · T<sub>max</sub></td><td>1 재장전 일정</td><td>대정비 시점과 재장전 간격 상한</td><td>1995 · 2부</td></tr>
+      <tr><td>C<sub>건조</sub> · C<sub>노심</sub> · V<sub>년</sub> · 환율 · N<sub>max</sub></td><td>5 총비용</td><td>해치 계산용 건조비, 노심 고정비, 비가동 손실 단가, 원화 표시, 비교 범위</td><td>1995 값·표시</td></tr>
+    </table></div>
+  </section>
+
+  <section id="result">
+    <h2>결과</h2>
+    <p class="verdict" id="verdict"></p>
+    <div class="stats" id="stats"></div>
+    <p class="muted" style="font-size:13px" id="statsNote"></p>
+
+    <div class="fig">
+      <div class="ft">재장전 횟수별 척당 추가 비용</div>
+      <div class="fs">HEU 무재장전 기준함 대비 증분 · 2026년 달러</div>
+      <div id="chCost" class="plot" style="height:420px"></div>
+      <div class="src">막대는 비용 항목, 실선은 합계, 지시선은 최저점 N*. N이 늘수록 건조비 증분(진한 파랑)은 줄고 재장전비와 가용성 손실은 늘어난다. 노심이 HEU보다 작아지면 건조비 증분은 음수가 된다.</div>
+    </div>
+
+    <div class="fig">
+      <div class="ft">노심 체적 배수와 선체 길이 증가</div>
+      <div class="fs">LEU 노심 ÷ HEU 기준 노심(왼쪽 축) · 직경 고정 시 선체 길이 증가(오른쪽 축)</div>
+      <div id="chCore" class="plot" style="height:380px"></div>
+      <div class="src">가로축 아래 숫자는 노심 체적 배수. 점선은 1995 보고서 검증 기준 3배. 자료: US Naval Nuclear Propulsion Program(1995, p. 10).</div>
+    </div>
+
+    <div class="fig">
+      <div class="ft">문헌 묶음별 비교</div>
+      <div class="fs">무재장전 노심 배수(막대)와 가설 마진(점선, 오른쪽 축)</div>
+      <div id="chScn" class="plot" style="height:380px"></div>
+      <div class="src">다른 값은 현재 설정에 고정하고 r과 우라늄 밀도비만 문헌 묶음으로 바꾼 결과. 노심이 HEU와 같아지는 고밀도 연료 묶음(Hanlon, Mané)에서는 무재장전의 선체 손해가 없어 가설이 기각된다. 가운데 가로 회색선은 마진 0(판정 경계).</div>
+    </div>
+
+    <details class="more">
+      <summary>재장전 횟수별 계산 과정<span class="muted">단계별 중간값</span></summary>
+      <div class="scroll"><table class="wide" id="tbl"></table></div>
+      <div class="fig" style="margin:6px 0 0"><div class="src" id="tblNote"></div></div>
+    </details>
+
+    <h3>1995 보고서 값과 비교</h3>
+    <p class="muted">모델이 1995 미 해군원자로국 보고서의 공개값을 얼마나 재현하는지 확인한다.</p>
+    <div class="scroll"><table id="valTbl"></table></div>
+    <div class="fig" style="margin:6px 0 0"><div class="src">자료: US Naval Nuclear Propulsion Program(1995), 쪽 번호는 보고서 본문 기준. Naval Reactors(2014).</div></div>
+  </section>
+
+  <section id="sens">
+    <h2>민감도 분석</h2>
+    <p class="intro">가설 마진은 무재장전 비용에서 재장전 1회 이상 중 최저 비용을 뺀 값이다. 양수면 재장전이 싸서 가설 지지, 음수면 기각이다. 조정값을 하나씩, 둘씩, 전부 무작위로 움직여 판정이 얼마나 단단한지 본다.</p>
+
+    <div class="fig">
+      <div class="ft">어떤 값이 판정을 가장 크게 흔드나</div>
+      <div class="fs">한 값만 범위 끝까지 움직였을 때의 가설 마진 · 척당 2026년 달러</div>
+      <div id="chTor" class="plot" style="height:520px"></div>
+      <div class="src">붉은 실선은 판정 경계(마진 0), 검은 점선은 현재 설정. 막대가 붉은 선을 넘는 값이 판정을 바꾼다. 다른 값은 현재 설정에 고정.</div>
+    </div>
+
+    <h3>판정이 뒤집히는 값</h3>
+    <div class="scroll"><table id="beTbl"></table></div>
+    <div class="fig" style="margin:6px 0 0"><div class="src">한 값만 움직였을 때 가설 마진이 0이 되는 지점.</div></div>
+
+    <div class="fig">
+      <div class="ft">두 값을 함께 움직인 판정 지도</div>
+      <div class="sel">가로축 <select id="hx"></select> 세로축 <select id="hy"></select></div>
+      <div id="chMap" class="plot" style="height:440px"></div>
+      <div class="src">칸 색은 그 조합의 최적 재장전 횟수 N*. 흙빛(N* = 0)은 가설 기각, 파란 칸은 지지. 검은 점은 현재 설정.</div>
+    </div>
+
+    <div class="fig">
+      <div class="ft">몬테카를로 분석</div>
+      <div class="fs">조정값을 문헌 범위 안에서 무작위로 3,000번 뽑았을 때의 결과</div>
+      <div class="duo">
+        <div><div class="sub">N* 분포</div><div id="chMC" class="plot" style="height:320px"></div></div>
+        <div><div class="sub">가설 마진 분포</div><div id="chMC2" class="plot" style="height:320px"></div></div>
+      </div>
+      <div class="src" id="mcNote"></div>
+      <div class="noprint" style="margin-top:6px"><button class="tl" id="mcRun">다시 추출</button></div>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2>모델과 가정</h2>
+    <h3 style="margin-top:6px">상대 비교에서 약분되는 값</h3>
+    <p id="cancelP"></p>
+
+    <details class="more">
+      <summary>수식 자세히</summary>
+      <div class="fx">
+        <div class="eq">재장전 일정: 대정비(10·20년)에 붙이거나 균등 간격 중 싼 쪽,  T = 가장 긴 간격</div>
+        <p>재장전 N회를 대정비 시점에 먼저 붙이고, 남는 재장전은 가장 긴 구간을 반으로 나눠 단독 입거로 넣는다. 균등 간격 일정도 함께 계산해 비용이 낮은 쪽을 고른다. 노심은 가장 긴 구간을 버티도록 설계한다.</p>
+        <div class="eq">B<sub>LEU</sub> = (e<sub>LEU</sub> ÷ e<sub>HEU</sub>) × B<sub>HEU</sub> ÷ r,  M<sub>U</sub> = P<sub>th</sub> × CF × 365 × T ÷ B<sub>LEU</sub></div>
+        <p>r은 LEU 노심이 HEU 노심보다 넣는 U-235의 배수다. 같은 에너지를 내는 데 U-235를 r배 넣으면 연료 1 kg이 내는 에너지(연소도)는 그만큼 낮아진다. B<sub>LEU</sub>가 연료 한계를 넘으면 경고한다. Hanlon 값(r 0.77, B<sub>HEU</sub> 333)으로 93 MWd/kg가 나와 원문 93.5와 맞는다.</p>
+        <div class="eq">M = r × (e<sub>HEU</sub> ÷ e<sub>LEU</sub>) ÷ 우라늄 밀도비 × (T ÷ L<sub>ship</sub>),  하한 적용 시 M ≥ 1</div>
+        <p>우라늄 밀도비는 노심 1 L에 담는 우라늄 질량의 LEU÷HEU 비다. 같은 연료를 쓰면 1이고, 연료를 빽빽하게 채우거나 고밀도 연료를 쓰면 커진다. HEU 노심 크기는 열출력과 열전달로 정해지므로 LEU 노심이 그보다 작아지지 않게 하한을 둔다.</p>
+        <div class="eq">ΔW = W₀ × (M<sup>a</sup> − 1),  ΔL = ΔW ÷ (ρ<sub>sw</sub> × πD²/4)</div>
+        <p>1995 보고서의 20% LEU(+870 long ton)와 5% LEU(배수량 +70%) 두 사례를 함께 맞추면 a ≈ 1.12다.</p>
+        <div class="eq">C(N) = c<sub>t</sub>·ΔW + (N+1)·C<sub>노심</sub> + Σ<sub>재장전</sub> [병행: C<sub>병행</sub> + t<sub>off</sub>·V<sub>년</sub> / 단독: C<sub>단독</sub> + t<sub>sa</sub>·V<sub>년</sub>] ÷ (1+r<sub>d</sub>)<sup>t</sup> + [N≥1]·(C<sub>인프라</sub>/척수 ÷ (1+r<sub>d</sub>)<sup>t₁</sup> + C<sub>해치</sub>%·C<sub>건조</sub>)</div>
+        <p>건조비 증분은 0년에, 각 재장전 비용과 정박 손실은 그 재장전 연도 t에 발생한다고 보고 할인한다. 모든 항은 HEU 무재장전 기준함 대비 증분이며 1995년 달러 입력에 물가 배율을 곱해 2026년 달러로 표시한다.</p>
+      </div>
+    </details>
+
+    <details class="more">
+      <summary>입력 파라미터와 근거<span class="muted">전체 목록</span></summary>
+      <div class="scroll"><table id="asTbl"></table></div>
+      <div class="fig" style="margin:6px 0 0"><div class="src">상태: 확정은 4부 확정값, 추정은 문헌 역산값, 조정은 근거가 약하거나 정책 판단이 필요해 범위로 보는 값.</div></div>
+    </details>
+
+    <h3>모델의 한계</h3>
+    <ul class="lim">
+      <li>교육용 에너지 수지 모델이다. 반응도 제어, 가연성 독물질, 출력 분포, 중성자 수송 계산은 문헌별 U-235 장전비 r과 우라늄 밀도비로 대신했다.</li>
+      <li>노심은 HEU 대비 배수로만 다루고 절대 체적은 계산하지 않는다. 우라늄 질량은 연소도로 구해 Hanlon의 HEU 678 kg과 맞춘다.</li>
+      <li>재장전 일정은 대정비 부착과 균등 간격 두 가지만 비교한다. 노심마다 다른 수명으로 설계하는 경우는 다루지 않는다.</li>
+      <li>중량과 비용 계수는 1995 미 해군 보고서 한 건에서 역산한 미 함대 기준값이다. 한국 조선 단가에 바로 적용할 수 없다.</li>
+      <li>1995 보고서는 함대 연간 비용을 재장전안 $2.6B, 재설계안 $1.1B로 평가한다. 이 모델은 척당 일회성 비용을 비교하며 함대 증설은 반영하지 않았다.</li>
+      <li>공개 문헌만 사용했다(보안서약서 제5조).</li>
+    </ul>
+  </section>
+
+  <section id="refs">
+    <h2>참고문헌 반영</h2>
+    <p class="intro">참고문헌 폴더의 자료와 붙여 넣은 예타 지침을 검토해 1-5차에 걸쳐 수치를 바꿨고, 6차에서 계산 구조를 고쳤다. 아래 표는 6차 수정이 결론을 얼마나 움직였는지 보여 준다.</p>
+    <h3 style="margin-top:6px">6차 반영: 계산 구조 수정 전후</h3>
+    <div class="scroll"><table id="baTbl"></table></div>
+    <div class="fig" style="margin:6px 0 0"><div class="src" id="baMC"></div></div>
+    <div class="scroll" style="margin-top:14px"><table>
+      <tr><th>수정</th><th>이전</th><th>변경</th><th>근거</th></tr>
+      <tr><td>노심 크기 입력</td><td>f<sub>burn</sub>(HEU·LEU), k, 연료 종류, 연료 체적비를 따로 입력</td><td>U-235 장전비 r과 우라늄 밀도비를 문헌 묶음으로 입력</td><td>노심 배수에는 k ÷ f<sub>burn</sub>의 비와 우라늄 밀도비만 들어감. Hanlon r 0.77은 U-Mo 고밀도와 묶여야 원문의 같은 노심이 재현됨</td></tr>
+      <tr><td>연소도 한계</td><td>UO₂ 100 MWd/kg 하나로 표시</td><td>연료별: 서멧 300, U-10Mo 100, UO₂ 펠릿 100, UO₂ 카라멜 60</td><td>Hanlon(2017), Peakman(2019), Ippolito(1990) 표 4.2. 1995 묶음(연소도 110)은 서멧 기준으로 한계 이내</td></tr>
+      <tr><td>노심 하한</td><td>없음(재장전 3회부터 선체 이득 발생)</td><td>HEU 노심 크기 아래로 내려가지 않음(기본 켜짐)</td><td>HEU 노심 크기는 열출력·열전달로 정해짐. Hanlon은 HEU·LEU를 같은 기하(반경 55 cm, 높이 100 cm)로 설계</td></tr>
+      <tr><td>재장전 일정</td><td>균등 간격, 앞 2회는 시점과 무관하게 병행 단가</td><td>대정비(10·20년) 부착 일정과 균등 간격 중 싼 쪽. 대정비와 겹칠 때만 병행</td><td>1995 p. 21: 10·20년 대정비에 붙인 재장전 $145M, 별도 입거 $405M</td></tr>
+      <tr><td>단독 입거 기간</td><td>병행과 같은 6개월</td><td>24개월(범위 18-31)</td><td>Hanlon(2017): Los Angeles급 재장전 정비 평균 24개월, 첫 함 31개월</td></tr>
+      <tr><td>몬테카를로</td><td>조정값을 서로 독립으로 추출</td><td>문헌 묶음별로 r·밀도비 ±10%, 연료 한계 밖 조합은 제외</td><td>문헌에 없는 조합(노심 5배 이상)이 섞이는 문제 해결</td></tr>
+      <tr><td>판정 표시</td><td>4부 가설만</td><td>4부 가설과 2부 H3(노심 설계 수명 7-12년) 함께</td><td>1-6 지적</td></tr>
+    </table></div>
+    <h3>1-5차 반영 기록</h3>
+    <div class="scroll"><table>
+      <tr><th>항목</th><th>이전</th><th>변경</th><th>근거</th></tr>
+      <tr><td>기준함 건조비</td><td>$1,540M(역산)</td><td>패널에서 제거</td><td>현재 식에서 쓰이지 않음. 1995 p. 23 값은 $1.55B</td></tr>
+      <tr><td>노심 3배 시 중량 증가</td><td>+936 lt</td><td>+870 lt(884 t)</td><td>1995 p. 24 본문. 비용 $400M과 같은 문장의 값</td></tr>
+      <tr><td>t당 건조비 증분</td><td>0.42 $M/t</td><td>0.45 $M/t</td><td>$400M ÷ 884 t</td></tr>
+      <tr><td>중량 증가 식</td><td>W₀[s(M−1)+(1−s)(M<sup>2/3</sup>−1)]</td><td>W₀(M<sup>a</sup> − 1), W₀ 360 t, a 1.12</td><td>1995 p. 11-12 20%·5% LEU 두 사례 동시 재현</td></tr>
+      <tr><td>재장전 비용 구조</td><td>회당 $145M 일정</td><td>병행 $145M(최대 2회) + 단독 $405M</td><td>1995 p. 21. 1·2·3회 비용이 5부 표와 일치</td></tr>
+      <tr><td>추가 비가동</td><td>6개월</td><td>10개월</td><td>1995 p. 22 재장전 3회에 2.5년</td></tr>
+      <tr><td>가용성 손실 단가</td><td>약 $47M/년</td><td>$100M/년</td><td>1995 p. 22 수명주기비용 $3.2B</td></tr>
+      <tr><td>최대 출력밀도</td><td>200 MW/m³</td><td>105 MW/m³</td><td>Peakman et al.(2019) 상용 PWR</td></tr>
+      <tr class="grp"><td colspan="4">2차 반영</td></tr>
+      <tr><td>f<sub>burn</sub> HEU · LEU</td><td>0.50 · 0.50(임의)</td><td>0.44 · 0.455</td><td>HEU는 Hanlon(2017) 연소도 333 MWd/kg 역산. LEU는 1995 노심 3배 재현. Hanlon LEU 93.5 MWd/kg이면 0.38, Mané(2020) 하한 0.33</td></tr>
+      <tr><td>f<sub>burn</sub> 민감도 범위</td><td>0.25-0.75</td><td>LEU 0.30-0.46 · HEU 0.40-0.50</td><td>위 세 자료의 범위</td></tr>
+      <tr><td>이용률 CF</td><td>30%(임의)</td><td>12.5%</td><td>Hanlon(2017) 배치 6/12개월 × 출력 0.25. 판정에는 영향 없음</td></tr>
+      <tr><td>추가 비가동</td><td>10개월</td><td>6개월(범위 3-10)</td><td>Hanlon(2017) 재장전 포함 정비 24개월 대 미포함 18개월. 프랑스 Rubis 해치 3-5개월, 1995 10개월</td></tr>
+      <tr><td>할인율</td><td>없음</td><td>4.5%(범위 3-6)</td><td>예비타당성조사 사회적 할인율(2017 개편). 현행값 미확인</td></tr>
+      <tr><td>물가 배율</td><td>2.17(CPI)</td><td>2.82</td><td>CBO(2024) 조선 물가가 GDP 디플레이터보다 연 1.2%p 빠름(1980-2022). 31년 × 1.45와 GDP 디플레이터 약 1.95의 곱. 디플레이터 원자료 미확인</td></tr>
+      <tr><td>1995 수명 검증 행</td><td>Pu 보정 포함 비교</td><td>Pu 보정 없이 비교</td><td>7.5년은 HEU용 기존 노심에 LEU를 넣은 경우라서 최적화 보정을 빼야 같은 조건. 수정 후 7.1년(차이 −5%)</td></tr>
+      <tr class="grp"><td colspan="4">3차 반영(스캔본)</td></tr>
+      <tr><td>LEU 연료 체적비 φ<sub>L</sub></td><td>없음(HEU와 같다고 가정)</td><td>별도 항목, 기본 0.30</td><td>Ippolito(1990) 표 5.1: LEU 노심 UO₂ 70% 대 HEU 20-35%. 노심 배수를 바꾸는 설계 변수</td></tr>
+      <tr><td>f<sub>burn</sub> 근거</td><td>3종</td><td>Ippolito 추가(HEU 0.45, LEU 0.25, φ<sub>L</sub> 0.70)</td><td>Ippolito 표 5.5 초기·말기 U-235 질량과 50 MWt 1,200 FPD에서 역산. 노심 배수 2.40배로 원문 1.7-2.5배 재현</td></tr>
+      <tr><td>할인율 범위</td><td>3-6%</td><td>3.5-4.5%</td><td>KDI(2021) 표 XI-10 사회적 시간선호율 3.53-4.37%. 기본값 4.5%는 유지</td></tr>
+      <tr><td>검증표</td><td>1995·Hanlon</td><td>Ippolito 2행 추가</td><td>같은 수명 노심 체적비 1.7-2.5배, 초기 U-235 장전량 1.12-1.84배</td></tr>
+      <tr class="grp"><td colspan="4">4차 반영</td></tr>
+      <tr><td>물가 배율</td><td>2.82(디플레이터 추정 1.95)</td><td>2.88 = 1.987 × 1.448</td><td>BEA GDP 디플레이터 1995 66.939, 2026 1-3분기 평균 132.993(2025 연평균 128.893). 조선 초과 1.2%p/년은 CBO(2024). 초과분을 별도 항목으로 분리</td></tr>
+      <tr><td>할인율</td><td>범위 3.5-4.5%</td><td>기본 4.5%, 범위 3-6%</td><td>2026 운용지침 전문에 할인율 조항 없음. 개편 내용은 평가 가중치와 분석 항목. 총괄지침 제63호 원문 확인: 제50조 사회적 할인율 4.5%(30년 넘는 철도·수자원은 이후 3.5%), 제55조 재무적 할인율 4.5%, 제51조 할인율 민감도 분석 의무</td></tr>
+      <tr><td>재장전형 설계 추가비</td><td>없음</td><td>C<sub>해치</sub> 건조비의 0-10%, 기본 0</td><td>Moore(2017): 미국은 압력선체 절단·재용접, 프랑스는 해치로 절단 없이 재장전. 금액 근거 없음</td></tr>
+      <tr><td>재장전 간격 상한</td><td>없음</td><td>T<sub>max</sub> 20년 표시</td><td>2부 주기 스캔 범위. 프랑스 원자로 10년 검사 의무(Moore 2017). 넘는 경우 표시만 함</td></tr>
+      <tr class="grp"><td colspan="4">5차 반영</td></tr>
+      <tr><td>예타 적용 여부</td><td>예타 할인율을 기준값으로 사용</td><td>준거값으로만 사용</td><td>2026 운용지침 제20조 3호: 국가안보·보안 관련 국방 사업은 예타 대상에서 제외. 장보고-N은 면제 대상일 가능성이 큼</td></tr>
+      <tr><td>조선 초과 물가 범위</td><td>0.8-1.6%p</td><td>0.5-2.0%p</td><td>CBO(2024) 1.2%p를 기본값으로 두고 연도별 지수 검증은 생략. 2025 디플레이터(1.927) 기준이면 배율 2.79, 2026 1-3분기(1.987) 기준이면 2.88로 차이 3%</td></tr>
+      <tr><td>사용후핵연료 관리비</td><td>근거 없음</td><td>판정에 영향 없음으로 정리</td><td>방폐기금(2016·2017) 경수로 사용후핵연료 관리부담금 다발당 3.2억 원. 다발당 약 0.45 tU로 보면 tU당 약 7억 원이고 LEU 노심 우라늄 수 t이면 수십억 원 수준. 총 우라늄량이 재장전 횟수와 무관하게 같아 비교에서 약분</td></tr>
+    </table></div>
+    <div class="fig" style="margin:6px 0 0"><div class="src">1 long ton = 1.016 t.</div></div>
+
+    <details class="more">
+      <summary>검토했지만 반영하지 않은 수치</summary>
+      <div class="scroll"><table>
+        <tr><th>자료</th><th>수치</th><th>반영하지 않은 이유</th></tr>
+        <tr><td>1995 보고서</td><td>LEU 연료 개발 10-15년 $800M · 제조 설비 $345-420M</td><td>무재장전과 재장전 모두에 드는 공통비라 비교에서 약분</td></tr>
+        <tr><td>1995 보고서</td><td>LEU 공격잠수함 재설계 일회성 비용 $4.0B</td><td>장보고-N은 신규 설계라 HEU 대비 증분으로 볼 근거 부족</td></tr>
+        <tr><td>1995 보고서</td><td>함대 연간 비용 재장전안 $2.6B · 재설계안 $1.1B</td><td>55척 함대 단위 값. 한계에 기재</td></tr>
+        <tr><td>Naval Reactors(2014)</td><td>재장전 시 척당 수명주기비용 +$1.0B</td><td>내역 비공개. 비교 참고에만 사용</td></tr>
+        <tr><td>NNSA(2016, 2022)</td><td>연료 개발 15-25년 $1B 이상 · TRL 3 목표</td><td>공통비. 고밀도 연료 안내 문구에 사용</td></tr>
+        <tr><td>Peakman et al.(2019)</td><td>440 MWt · 15년 · CF 93.5% · 출력밀도 40 kW/l</td><td>상선용 연속 운전 조건. 출력밀도만 안내 문구에 사용</td></tr>
+        <tr><td>Nguyen et al.(2019)</td><td>ATOM 450 MWt · 출력밀도 약 26</td><td>육상 SMR 설계값. 안내 문구에만 사용</td></tr>
+        <tr><td>Burcher &amp; Rydill 파일</td><td>해당 없음</td><td>실제 내용은 The Submarine Review(1995.7) 잡지의 서평. 원서 확보 필요</td></tr>
+        <tr><td>Mané(2020)</td><td>50 MWt · 노심 1.81 m³ · U-235 약 250 kg · 전출력 2,000일 이상 · 출력밀도 22.75 kW/l</td><td>f<sub>burn</sub> 하한(0.33) 검증에만 사용. 출력밀도가 낮은 설계라 q<sub>max</sub> 기본값에는 쓰지 않음</td></tr>
+        <tr><td>McCord(2014)</td><td>Ippolito 결과 재인용: 20% LEU로 20년 수명이면 노심 1.7-2.5배 · 단일체 U-Mo 17.4 gU/cm³</td><td>체적비 비교 문구에 사용. 17.4는 연료 선택지(15.5)보다 높아 추가 여부 검토 필요</td></tr>
+        <tr><td>장보고-III Batch-II 계약</td><td>2번함 9,857억 원(2021) · 3번함 11,019억 원(2023)</td><td>디젤 잠수함 단가라 핵추진 건조비로 쓸 수 없음. 비용을 모두 같은 비율로 바꾸면 판정은 그대로라 한국 단가 보정은 생략</td></tr>
+        <tr><td>CRS RL32665(2025)</td><td>조선 비용 인플레이션 서술</td><td>수치는 CBO(2024)와 같은 출처라 CBO 값 사용</td></tr>
+        <tr><td>Ippolito(1990)</td><td>7% 노심은 600 FPD만 임계 유지 · 출력밀도 LEU 평균 75 kW/l, HEU 131-189 kW/l</td><td>5% 이하 농축 사례는 1995 검증에서 이미 다룸. 출력밀도는 안내 문구 참고값</td></tr>
+        <tr><td>Moore(2017, FAS)</td><td>연료 시험편 최대 10년 조사 · 수명주기 노심 결함 시 수정 비용 "$10억의 큰 부분"</td><td>시험 기간이라 연료 한계로 쓸 수 없음. 비용은 사고 시 값이라 제외</td></tr>
+        <tr><td>예타 수행 총괄지침(2017.3.31 시행판)</td><td>제52조 사회적 할인율 5.5%</td><td>2017년 9월 개편 전 판이라 미사용. 민감도 상한 6%가 이 값을 포함</td></tr>
+        <tr><td>예타 운용지침(2026, 전문)</td><td>할인율 조항 없음 · 제52조는 타당성재조사 조항 · AHP 0.5 이상이면 타당</td><td>국방 사업 예타 면제(제20조 3호) 판단에만 사용</td></tr>
+        <tr><td>KAIST 선박용 SMR 차폐(KNS 2025)</td><td>300 MWt 차폐 계통 1,509.87 t(20 mSv/년) → 1,310.18 t(100 mSv/년), 13% 감소</td><td>절대 차폐 질량이라 증분 계수 W₀와 직접 비교 불가. 노심 3배 시 증가분 884 t는 이 규모의 차폐가 표면적 비례로 늘어날 때(약 2.1배)와 같은 자릿수</td></tr>
+        <tr><td>핵연료주기 외부비용(2015)</td><td>저·중준위 폐기물 처분 단가 중심</td><td>사용후핵연료 중간저장·수송 단가가 없어 미사용</td></tr>
+        <tr><td>KDI(2021)</td><td>할인율을 급격히 바꾸지 말라는 권고 · 위험 할증 미반영</td><td>정성 서술이라 범위 설정에만 반영</td></tr>
+      </table></div>
+    </details>
+
+    <h3>참고문헌</h3>
+    <ol class="refs">
+      <li>U.S. Naval Nuclear Propulsion Program. (1995). Report on use of low enriched uranium in naval nuclear propulsion.</li>
+      <li>Naval Reactors. (2014). Report on low enriched uranium for naval reactor cores.</li>
+      <li>U.S. DOE/NNSA. (2016). Conceptual research and development plan for low-enriched uranium naval fuel.</li>
+      <li>U.S. DOE/NNSA. (2022). Nonproliferation fuels development activities summary.</li>
+      <li>Peakman, A., Owen, H., &amp; Abram, T. (2019). The core design of a small modular pressurised water reactor for commercial marine propulsion. Progress in Nuclear Energy, 113.</li>
+      <li>Nguyen, X. H., Kim, C., &amp; Kim, Y. (2019). An advanced core design for a soluble-boron-free small modular reactor ATOM. Nuclear Engineering and Technology, 51(2), 369-376.</li>
+      <li>Naval Submarine League. (1995, July). The Submarine Review(Burcher &amp; Rydill 서평 수록).</li>
+      <li>Hanlon, B. P. (2017). Validation of the use of low enriched uranium as a replacement for highly enriched uranium in US submarine reactors [Master's thesis, MIT].</li>
+      <li>산업통상자원부. (2015, 2016). 2016·2017년 예산 및 기금운용계획 사업설명자료(방사성폐기물관리기금).</li>
+      <li>육경래 외. (2025). Impact of radiation protection philosophy on shield mass for a marine SMR. 한국원자력학회 추계학술발표회.</li>
+      <li>핵연료주기 외부비용 평가. (2015). 방사성폐기물학회지(JNFCWT), 13(4), 243-251.</li>
+      <li>기획예산처. (2026). 예비타당성조사 수행 총괄지침(훈령 제63호, 2026.5.29 일부개정). 국가법령정보센터.</li>
+      <li>U.S. Bureau of Economic Analysis. Gross domestic product: implicit price deflator(연간 A191RD3A086NBEA, 분기 GDPDEF). FRED 2026.9-10 조회.</li>
+      <li>Moore, G. (2017). Life-of-the-ship reactors and accelerated testing. Federation of American Scientists.</li>
+      <li>기획예산처. (2026). 예비타당성조사 운용지침(훈령 제62호, 2026.5.29 일부개정).</li>
+      <li>Ippolito, T. D., Jr. (1990). Effects of variation of uranium enrichment on nuclear submarine reactor design [Master's thesis, MIT].</li>
+      <li>한국개발연구원 공공투자관리센터. (2021). 예비타당성조사 수행을 위한 세부지침 일반부문 연구.</li>
+      <li>Mané, E. (2020). Impact of fuel enrichment on key naval reactor characteristics and non-proliferation concerns. Science &amp; Global Security, 28(2).</li>
+      <li>McCord, C. L. (2014). Examination of the conversion of the U.S. submarine fleet from highly enriched uranium to low enriched uranium [Master's thesis, MIT].</li>
+      <li>Congressional Budget Office. (2024). The shipbuilding composite index and its rates of change compared with economywide inflation rates.</li>
+      <li>Congressional Budget Office. (2018). How CBO estimates the cost of new ships.</li>
+      <li>방위사업청. (2021, 2023). 장보고-III Batch-II 2번함·3번함 건조계약 보도자료.</li>
+    </ol>
+  </section>
+</div></main>
+</div>
+
+<script src="js/model.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
